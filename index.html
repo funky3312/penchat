@@ -59,8 +59,8 @@
     <aside class="sidebar-rail drawer-collapsed" id="sidebarRail">
       <!-- 56px 수직 아이콘 독 (Dock) -->
       <div class="rail-dock" id="railDock">
-        <!-- 📁 1. 내 기기 파일 열기 (PDF · 이미지 · .graphly 즉시 탐색기 오픈) -->
-        <button class="rail-btn" id="btnPdfImport" title="파일 열기 (PDF · 이미지 · .graphly)">
+        <!-- 📁 1. 내 기기 파일 열기 (PDF · 이미지 · .penchat 즉시 탐색기 오픈) -->
+        <button class="rail-btn" id="btnPdfImport" title="파일 열기 (PDF · 이미지 · .penchat)">
           <span class="rail-icon"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -68,7 +68,7 @@
               <polyline points="9 14 12 11 15 14" />
             </svg></span>
         </button>
-        <input type="file" id="pdfFileInput" accept="application/pdf,image/*,.graphly,.json,.html" multiple
+        <input type="file" id="pdfFileInput" accept="application/pdf,image/*,.penchat,.graphly,.json,.html" multiple
           style="display: none;">
         <!-- ☁️ 2. 클라우드 보관함 (폴더 탐색기 · 클라우드 저장 & 불러오기 통합) -->
         <button class="rail-btn" id="btnCloudHub" title="클라우드 보관함 (저장 & 불러오기)">
@@ -2545,7 +2545,7 @@
             <span id="lblResumePdfFileName"></span>
             <button type="button" id="btnOpenLocalFileFromHub"></button>
             <button type="button" id="btnImportGraphlyFile"></button>
-            <input type="file" id="inputImportGraphlyFile" accept=".graphly,.json,.html">
+            <input type="file" id="inputImportGraphlyFile" accept=".penchat,.graphly,.json,.html">
             <div id="lblCloudSaveBoxTitle"></div>
             <input type="text" id="inputCloudSaveTags">
             <button type="button" id="btnExportGraphlyFile"></button>
@@ -2576,10 +2576,10 @@
           <span>📁+ 새 폴더</span>
         </button>
         <button type="button" id="btnCloudUploadLocalFiles" class="win-explorer-cmd-btn"
-          title="내 기기(PC/패드)에 있는 .graphly 파일을 현재 폴더로 바로 올리기">
+          title="내 기기(PC/패드)에 있는 파일을 현재 폴더로 바로 올리기">
           <span>📤 업로드</span>
         </button>
-        <input type="file" id="inputCloudUploadLocalFiles" accept=".graphly,.html,.json" multiple
+        <input type="file" id="inputCloudUploadLocalFiles" accept=".penchat,.graphly,.html,.json" multiple
           style="display: none;">
         <div id="cloudLibrarySearchWrap" class="cloud-library-search-wrap">
           <input type="text" id="inputCloudLibrarySearch" class="cloud-library-search-input" placeholder="🔍 검색..."
@@ -2653,7 +2653,7 @@
                 <span id="lblCloudFooterOpenText">📂 열기</span>
               </button>
               <button type="button" id="btnCloudActionDownload" class="win-explorer-cmd-btn"
-                title="선택한 파일을 내 기기(PC/태블릿)에 .graphly 파일로 다운로드">
+                title="선택한 파일을 내 기기(PC/태블릿)에 다운로드">
                 <span>📥 다운로드</span>
               </button>
               <div class="win-explorer-move-wrap">

@@ -6555,8 +6555,8 @@ class GraphApp {
           return;
         }
 
-        // 2.5) .graphly.html / .graphly / .json / .html 파일 불러오기 (카톡/iOS 중복 번호 (1).html 포함)
-        const graphlyFile = rawFiles.find(f => f.name && /\.(graphly|json|html|htm)$/i.test(f.name));
+        // 2.5) .penchat.html / .graphly.html / .penchat / .graphly / .json / .html 파일 불러오기 (카톡/iOS 중복 번호 (1).html 포함)
+        const graphlyFile = rawFiles.find(f => f.name && /\.(penchat|graphly|json|html|htm)$/i.test(f.name));
         if (graphlyFile) {
           this.importGraphlyDeckFile(graphlyFile);
           return;
@@ -19833,7 +19833,7 @@ class GraphApp {
     const cardPro1M = document.getElementById('cardPlanPro1M');
     const cardPro1Y = document.getElementById('cardPlanPro1Y');
     const btnPayNow = document.getElementById('btnProModalPayNow');
-    this._selectedProPlan = { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    this._selectedProPlan = { name: 'Penchat Pro 1개월 이용권 (30일)', amount: 3900 };
     const selectProPlan = (name, amount, is1M) => {
       this._selectedProPlan = { name, amount };
       if (cardPro1M && cardPro1Y) {
@@ -19846,8 +19846,8 @@ class GraphApp {
         btnPayNow.textContent = `💳 토스페이먼츠 카드 결제하기 (${amount.toLocaleString('ko-KR')}원)`;
       }
     };
-    if (cardPro1M) cardPro1M.onclick = () => selectProPlan('Graphly Pro 1개월 이용권 (30일)', 3900, true);
-    if (cardPro1Y) cardPro1Y.onclick = () => selectProPlan('Graphly Pro 1년 이용권 (365일)', 39000, false);
+    if (cardPro1M) cardPro1M.onclick = () => selectProPlan('Penchat Pro 1개월 이용권 (30일)', 3900, true);
+    if (cardPro1Y) cardPro1Y.onclick = () => selectProPlan('Penchat Pro 1년 이용권 (365일)', 39000, false);
     if (btnOpenProHub) {
       btnOpenProHub.onclick = () => {
         if (modalCloud) modalCloud.classList.remove('show');
@@ -19983,10 +19983,10 @@ class GraphApp {
           ? (this.saveCurrentSlideIntoPlaylist(), JSON.parse(JSON.stringify(this.lessonPlaylistSlides)))
           : [this.serializeFullSlideState((inpTitle && inpTitle.value.trim()) || '수업 노트')];
         const defaultTitle = slides.length > 1
-          ? `Graphly_${slides.length}문항_통째수업세트`
-          : (slides[0].slideTitle || 'Graphly_수업노트');
+          ? `Penchat_${slides.length}페이지_노트`
+          : (slides[0].slideTitle || 'Penchat_문서노트');
         const rawTitle = (inpTitle && inpTitle.value.trim()) ? inpTitle.value.trim() : defaultTitle;
-        const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#통째수업';
+        const rawTags = (inpTags && inpTags.value.trim()) ? inpTags.value.trim() : '#Penchat';
         this.exportGraphlyDeckFile(rawTitle, rawTags, slides);
       };
     }
@@ -20001,7 +20001,7 @@ class GraphApp {
       };
     }
 
-    // 화면에 .graphly 파일을 드래그 앤 드롭해도 0.1초 만에 즉시 열리도록 지원! (단, 클라우드 보관함 창이 열려 있을 때는 클라우드 폴더 업로드가 처리)
+    // 화면에 .penchat / .graphly 파일을 드래그 앤 드롭해도 0.1초 만에 즉시 열리도록 지원! (단, 클라우드 보관함 창이 열려 있을 때는 클라우드 폴더 업로드가 처리)
     if (!this._graphlyDropListenerAttached) {
       this._graphlyDropListenerAttached = true;
       window.addEventListener('drop', (e) => {
@@ -20010,7 +20010,7 @@ class GraphApp {
         if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
         const f = e.dataTransfer.files[0];
         const lowerName = (f && f.name) ? f.name.toLowerCase() : '';
-        if (f && (lowerName.endsWith('.graphly') || lowerName.endsWith('.graphly.html'))) {
+        if (f && (lowerName.endsWith('.penchat') || lowerName.endsWith('.penchat.html') || lowerName.endsWith('.graphly') || lowerName.endsWith('.graphly.html'))) {
           e.preventDefault();
           e.stopPropagation();
           this.importGraphlyDeckFile(f);
@@ -22902,7 +22902,7 @@ class GraphApp {
       this.showToast('⚠️ 토스페이먼츠 결제 모듈을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
       return false;
     }
-    const plan = this._selectedProPlan || { name: 'Graphly Pro 1개월 이용권 (30일)', amount: 3900 };
+    const plan = this._selectedProPlan || { name: 'Penchat Pro 1개월 이용권 (30일)', amount: 3900 };
     const inpName = document.getElementById('inputProBuyerName');
     const inpEmail = document.getElementById('inputProBuyerEmail');
     const customerName = (inpName && inpName.value ? inpName.value.trim() : '') || this.cloudUser.displayName || '회원구매자';
@@ -22910,7 +22910,7 @@ class GraphApp {
     const tossClientKey = 'test_ck_DnyRpQWGrNaNRPo2mQylVKwv1M9E';
     const tossPayments = window.TossPayments(tossClientKey);
     const cleanUid = String(this.cloudUser.uid).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 28);
-    const orderId = `GRAPHLY_${cleanUid}_${Date.now()}`;
+    const orderId = `PENCHAT_${cleanUid}_${Date.now()}`;
     try {
       localStorage.setItem('graphly_pending_payment_uid', this.cloudUser.uid);
     } catch (e) { }
@@ -24418,7 +24418,7 @@ class GraphApp {
     try {
       const text = await file.text();
       const pack = await this._extractGraphlyPackFromText(text);
-      const cleanName = file.name ? file.name.replace(/\.(graphly\.html|graphly|json|html)$/i, '') : '불러온 수업 세트';
+      const cleanName = file.name ? file.name.replace(/\.(penchat\.html|penchat|graphly\.html|graphly|json|html)$/i, '') : '불러온 노트';
       return this.loadGraphlyPackObject(pack, cleanName, false);
     } catch (err) {
       this.showToast('⚠️ 파일을 읽는 중 오류가 발생했습니다.');
@@ -24457,14 +24457,14 @@ class GraphApp {
         });
 
         const cleanFileName = file.name
-          ? file.name.replace(/\.(graphly\.html|graphly|json|html)$/i, '').trim()
+          ? file.name.replace(/\.(penchat\.html|penchat|graphly\.html|graphly|json|html)$/i, '').trim()
           : '';
-        const rawTitle = cleanFileName || (pack.title ? String(pack.title).trim() : 'Graphly 수업 노트');
+        const rawTitle = cleanFileName || (pack.title ? String(pack.title).trim() : 'Penchat 문서 노트');
         const isDeck = slides.length > 1 || Boolean(pack.isPlaylist);
-        const rawTags = (pack.tags && String(pack.tags).trim()) || (isDeck ? '#통째수업' : '#수업노트');
+        const rawTags = (pack.tags && String(pack.tags).trim()) || '#Penchat';
         const primarySlide = slides[0];
         const summaryText = pack.summary || (isDeck
-          ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(primarySlide)}`
+          ? `📚 ${slides.length}페이지 노트 · ${this._buildSlideSummaryBadge(primarySlide)}`
           : this._buildSlideSummaryBadge(primarySlide));
 
         parsedCandidates.push({
@@ -24478,7 +24478,7 @@ class GraphApp {
     }
 
     if (!parsedCandidates.length) {
-      this.showToast('⚠️ 업로드할 수 있는 Graphly 수업 파일(.graphly)이 아닙니다.');
+      this.showToast('⚠️ 업로드할 수 있는 Penchat 파일이 아닙니다.');
       return [];
     }
 
