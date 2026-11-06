@@ -2617,14 +2617,50 @@ class GraphApp {
     if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
     this.updateAxesUI();
 
-    // 🌟 Penchat 빈 캔버스 1초 가이드(#penchatEmptyGuide) 바인딩
+    // 🌟 Penchat 빈 캔버스 1초 가이드(#penchatEmptyGuide) & 5대 초고속 불러오기(붙여넣기·사진·카메라·화면캡처·PDF) 바인딩
     const emptyGuideEl = document.getElementById('penchatEmptyGuide');
+    const btnEmptyGuidePaste = document.getElementById('btnEmptyGuidePaste');
+    const btnEmptyGuidePhoto = document.getElementById('btnEmptyGuidePhoto');
+    const btnEmptyGuideCamera = document.getElementById('btnEmptyGuideCamera');
+    const btnEmptyGuideScreenCap = document.getElementById('btnEmptyGuideScreenCap');
     const btnEmptyGuideOpen = document.getElementById('btnEmptyGuideOpenFile');
+
+    if (btnEmptyGuidePaste) {
+      btnEmptyGuidePaste.onclick = (e) => {
+        e.stopPropagation();
+        this.pasteImageFromClipboardButton();
+      };
+    }
+    if (btnEmptyGuidePhoto) {
+      btnEmptyGuidePhoto.onclick = (e) => {
+        e.stopPropagation();
+        const photoInput = document.getElementById('inputQuickPhoto');
+        if (photoInput) {
+          photoInput.value = '';
+          photoInput.click();
+        }
+      };
+    }
+    if (btnEmptyGuideCamera) {
+      btnEmptyGuideCamera.onclick = (e) => {
+        e.stopPropagation();
+        this.triggerDirectCameraCapture();
+      };
+    }
+    if (btnEmptyGuideScreenCap) {
+      btnEmptyGuideScreenCap.onclick = (e) => {
+        e.stopPropagation();
+        this.captureScreenToBoard();
+      };
+    }
     if (btnEmptyGuideOpen) {
       btnEmptyGuideOpen.onclick = (e) => {
         e.stopPropagation();
         const fileInput = document.getElementById('pdfFileInput');
-        if (fileInput) fileInput.click();
+        if (fileInput) {
+          fileInput.value = '';
+          fileInput.click();
+        }
       };
     }
     if (this.canvas && emptyGuideEl) {
@@ -2637,8 +2673,8 @@ class GraphApp {
     this.syncPenchatEmptyGuideUI = () => {
       if (!emptyGuideEl) return;
       const hasStrokes = Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0;
-      const hasPdfPage = Boolean(this.isPdfFullPageBoard && this.pdfFullPageBoardData);
-      const hasProblemCard = Boolean(this._hasPrimaryProblemCard && this.problemCardData) || Boolean(Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0);
+      const hasPdfPage = Boolean((this.isPdfFullPageBoard && this.pdfFullPageBoardData) || this.pdfPageBoardData);
+      const hasProblemCard = Boolean((this._hasPrimaryProblemCard || (document.getElementById('problemCardWidget') && document.getElementById('problemCardWidget').style.display !== 'none')) && this.problemCardData) || Boolean(Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0);
       const hasGraphCard = Boolean(this._hasPrimaryGraphCard && this.graphCardData) || Boolean(Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0);
       const isBusy = Boolean(this.isAudioRecording || this.isAudioPlaying || this._isSmartViewerActive);
       const shouldShow = !hasStrokes && !hasPdfPage && !hasProblemCard && !hasGraphCard && !isBusy;
@@ -3165,19 +3201,23 @@ class GraphApp {
   }
 
   isStylusPalmRejectionActive() {
-    if (this._hasDetectedStylusPen) return true;
-    return this.isIOSOrIPad();
+    // 🌟 Penchat: 애플펜슬·S펜 등 전용 스타일러스(e.pointerType === 'pen')가 실제로 감지된 경우에만 손가락 필기를 차단(팜 리젝션)하고,
+    // 펜슬 없이 스마트폰·태블릿을 사용하는 경우에는 언제든 한 손가락으로 즉시 그리기·밑줄·형광펜이 작동하도록 지원!
+    return Boolean(this._hasDetectedStylusPen);
   }
 
-  /**
-   * 🌟 [아이패드 짭플펜슬(비블루투스 정전식 스타일러스) 미세 터치(Pinpoint Touch) 자동 승격 엔진]
-   * - 짭플펜슬은 블루투스 통신 없이 펜촉의 정전 신호만으로 동작하므로, 빠른 필기나 기울임 각도에 따라
-   *   약 20글자에 1번꼴로 iPadOS가 pointerType을 'pen' 대신 'touch'로 내려보내는 현상이 발생합니다.
-   * - 이때 손가락(16~45px)이나 손바닥(50~120px)과 달리 펜촉은 접촉 면적(width, height)이 1.5~9.2px의 초미세 점으로 찍히거나
-   *   하드웨어 touchstart에서 touchType === 'stylus'(_isStylusTouchActive) 신호가 동시에 감지됩니다.
-   * - 이 조건에 부합하는 단일 터치는 손바닥으로 버리지 않고 즉시 'pen'으로 승격하여 필기 씹힘을 0%로 박멸합니다.
-   */
   _cancelAllActiveCardDrags() {
+    // 두 손가락 핀치 줌 시작 시, 직전 첫 번째 손가락이 닿으며 방금 시작된 짧은 점/획(<= 12포인트)이 있다면 즉시 롤백!
+    if (this.isDrawingInk && this._activeDrawingPointerType === 'touch' && this.currentInkStroke) {
+      if (!this.currentInkStroke.points || this.currentInkStroke.points.length <= 12) {
+        const badIdx = this.inkStrokes ? this.inkStrokes.indexOf(this.currentInkStroke) : -1;
+        if (badIdx !== -1) this.inkStrokes.splice(badIdx, 1);
+      }
+      this.currentInkStroke = null;
+      this.isDrawingInk = false;
+      this.isStylusDrawing = false;
+      this._clearInkHoldTimer();
+    }
     this._isDraggingOrResizingAnyCard = false;
     const pWidget = document.getElementById('problemCardWidget');
     if (pWidget && typeof pWidget._cancelCardDrag === 'function') pWidget._cancelCardDrag();
@@ -3496,6 +3536,24 @@ class GraphApp {
     if (document.body) {
       document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
       document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
+      document.body.classList.toggle('ink-select-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'select'));
+    }
+
+    const shouldCardInkBeActive = Boolean(this.isInkMode && (this.activeInkTool === 'pen' || this.activeInkTool === 'highlighter' || this.activeInkTool === 'eraser'));
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget && pWidget.style.display !== 'none') {
+      pWidget.classList.toggle('card-ink-active', shouldCardInkBeActive);
+      const pInkBtn = document.getElementById('btnProblemCardLaser');
+      if (pInkBtn) pInkBtn.classList.toggle('active', shouldCardInkBeActive);
+    }
+    if (Array.isArray(this.extraProblemCards)) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) {
+          c.el.classList.toggle('card-ink-active', shouldCardInkBeActive);
+          const lBtn = c.el.querySelector('.btn-card-laser');
+          if (lBtn) lBtn.classList.toggle('active', shouldCardInkBeActive);
+        }
+      });
     }
 
     this.syncCurveContextBar();
@@ -3602,6 +3660,25 @@ class GraphApp {
     if (document.body) {
       document.body.classList.toggle('ink-laser-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'laser'));
       document.body.classList.toggle('ink-sticker-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'sticker'));
+      document.body.classList.toggle('ink-select-tool-active', Boolean(this.isInkMode && this.activeInkTool === 'select'));
+    }
+
+    // 🌟 Penchat: 펜·형광펜·지우개 선택 시 이미지/문서 카드 위 즉시 필기(card-ink-active) 자동 활성화, [↖ 이동] 선택 시 카드 몸통 드래그 이동 활성화!
+    const shouldCardInkBeActive = (tool === 'pen' || tool === 'highlighter' || tool === 'eraser');
+    const pWidget = document.getElementById('problemCardWidget');
+    if (pWidget && pWidget.style.display !== 'none') {
+      pWidget.classList.toggle('card-ink-active', shouldCardInkBeActive);
+      const pInkBtn = document.getElementById('btnProblemCardLaser');
+      if (pInkBtn) pInkBtn.classList.toggle('active', shouldCardInkBeActive);
+    }
+    if (Array.isArray(this.extraProblemCards)) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el) {
+          c.el.classList.toggle('card-ink-active', shouldCardInkBeActive);
+          const lBtn = c.el.querySelector('.btn-card-laser');
+          if (lBtn) lBtn.classList.toggle('active', shouldCardInkBeActive);
+        }
+      });
     }
 
     if (tool !== 'lasso') {
@@ -6510,11 +6587,26 @@ class GraphApp {
 
     const btnImport = document.getElementById('btnPdfImport');
     const fileInput = document.getElementById('pdfFileInput');
+    const photoInput = document.getElementById('inputQuickPhoto');
+    const cameraInput = document.getElementById('inputQuickCamera');
+    const btnRailQuickPaste = document.getElementById('btnRailQuickPaste');
+    const quickImportPopover = document.getElementById('quickImportPopover');
+    const btnMenuQuickPaste = document.getElementById('btnMenuQuickPaste');
+    const btnMenuQuickPhoto = document.getElementById('btnMenuQuickPhoto');
+    const btnMenuQuickCamera = document.getElementById('btnMenuQuickCamera');
+    const btnMenuQuickScreenCap = document.getElementById('btnMenuQuickScreenCap');
+    const btnMenuQuickPdfFile = document.getElementById('btnMenuQuickPdfFile');
     const btnQuick = document.getElementById('btnQuickPdfCrop');
     const btnOpenAnother = document.getElementById('btnPdfOpenAnother');
     const btnReturnToBoard = document.getElementById('btnReturnToBoard');
 
+    const closeQuickImportPopover = () => {
+      if (quickImportPopover) quickImportPopover.style.display = 'none';
+      if (btnImport) btnImport.classList.remove('active');
+    };
+
     const triggerFileOpen = (preserveReplaceFlag = false) => {
+      closeQuickImportPopover();
       if (fileInput) {
         if (!preserveReplaceFlag) {
           this._isReplacingViaNextCrop = false;
@@ -6529,15 +6621,110 @@ class GraphApp {
     this.triggerLocalFileExplorer = triggerFileOpen;
 
     if (btnImport) {
-      btnImport.onclick = () => {
-        if (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page') {
-          const modeName = this.lessonTeachingMode === 'page' ? '페이지 모드' : '캡처 모드';
-          this.showToast(`🔒 현재 [${modeName}] 수업 중입니다. 우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요.`);
+      btnImport.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (quickImportPopover) {
+          const isOpen = quickImportPopover.style.display !== 'none';
+          if (isOpen) {
+            closeQuickImportPopover();
+          } else {
+            quickImportPopover.style.display = 'flex';
+            btnImport.classList.add('active');
+          }
           return;
         }
         this._isReplacingViaNextCrop = false;
         triggerFileOpen();
       };
+    }
+
+    if (quickImportPopover) {
+      document.addEventListener('pointerdown', (e) => {
+        if (quickImportPopover.style.display === 'none') return;
+        if (!quickImportPopover.contains(e.target) && (!btnImport || !btnImport.contains(e.target))) {
+          closeQuickImportPopover();
+        }
+      }, true);
+    }
+
+    if (btnRailQuickPaste) {
+      btnRailQuickPaste.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        this.pasteImageFromClipboardButton();
+      };
+    }
+    if (btnMenuQuickPaste) {
+      btnMenuQuickPaste.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        this.pasteImageFromClipboardButton();
+      };
+    }
+    if (btnMenuQuickPhoto) {
+      btnMenuQuickPhoto.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        if (photoInput) {
+          this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
+          this.isWaitingForFilePicker = true;
+          photoInput.value = '';
+          photoInput.click();
+        }
+      };
+    }
+    if (btnMenuQuickCamera) {
+      btnMenuQuickCamera.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        this.triggerDirectCameraCapture();
+      };
+    }
+    if (btnMenuQuickScreenCap) {
+      btnMenuQuickScreenCap.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        this.captureScreenToBoard();
+      };
+    }
+    if (btnMenuQuickPdfFile) {
+      btnMenuQuickPdfFile.onclick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        closeQuickImportPopover();
+        this._isReplacingViaNextCrop = false;
+        triggerFileOpen();
+      };
+    }
+
+    const handleDedicatedImageInput = async (e, defaultLabel = '사진') => {
+      this.isWaitingForFilePicker = false;
+      const rawFiles = e.target.files ? Array.from(e.target.files) : [];
+      if (rawFiles.length === 0) return;
+      if (this.wasFullscreenBeforeFile) {
+        try {
+          const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+          if (!fsEl && document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { return document.documentElement.requestFullscreen(); });
+          }
+        } catch (err) { }
+        this.syncFullscreenButtonUI(true);
+      }
+      const imageFiles = rawFiles.filter(f => f && ((f.type && f.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif|bmp|heic|heif)$/i.test(f.name || '')));
+      if (imageFiles.length > 0) {
+        imageFiles.forEach((f, idx) => {
+          if (!f.name || /^image\./i.test(f.name)) {
+            f._customClipboardLabel = imageFiles.length > 1 ? `${defaultLabel} ${idx + 1}` : defaultLabel;
+          }
+        });
+        await this.loadImagesOnePerSlide(imageFiles);
+      }
+    };
+
+    if (photoInput) {
+      photoInput.onchange = (e) => handleDedicatedImageInput(e, '사진');
+    }
+    if (cameraInput) {
+      cameraInput.onchange = (e) => handleDedicatedImageInput(e, '카메라 촬영');
     }
 
     if (btnQuick) {
@@ -6777,6 +6964,105 @@ class GraphApp {
     this._preloadLastPdfFromIndexedDBOnBoot();
   }
 
+  // 🌟 [Penchat 5대 초고속 불러오기 헬퍼: ① 원탭 클립보드 붙여넣기 · ② 카메라 직행 · ③ 웹 화면 캡처 스냅샷] 🌟
+  async pasteImageFromClipboardButton() {
+    try {
+      if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+        this.showToast('📋 이 브라우저에서는 키보드 [Ctrl+V]로 바로 붙여넣을 수 있습니다.');
+        return;
+      }
+      const items = await navigator.clipboard.read();
+      const imageFiles = [];
+      for (const item of items) {
+        const imgType = item.types ? item.types.find(t => t.startsWith('image/')) : null;
+        if (imgType) {
+          const blob = await item.getType(imgType);
+          if (blob) {
+            const ext = imgType.split('/')[1] || 'png';
+            const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: imgType });
+            file._customClipboardLabel = '클립보드 캡처';
+            imageFiles.push(file);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        this._isReplacingViaNextCrop = false;
+        await this.loadImagesOnePerSlide(imageFiles);
+      } else {
+        this.showToast('📋 클립보드에 복사된 이미지가 없습니다. 스크린샷을 찍거나 이미지를 복사한 뒤 눌러주세요!');
+      }
+    } catch (err) {
+      console.warn('Clipboard read failed:', err);
+      this.showToast('📋 클립보드 접근 권한을 허용하거나 [Ctrl+V]를 눌러 이미지를 붙여넣으세요.');
+    }
+  }
+
+  triggerDirectCameraCapture() {
+    const cameraInput = document.getElementById('inputQuickCamera');
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+    const isMobileOrTablet = this.isIOSOrIPad() || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    if (!isMobileOrTablet) {
+      this.showToast('📷 스마트폰·태블릿에서는 카메라가 즉시 켜지며, PC에서는 사진 선택창이 열립니다.');
+    }
+    if (cameraInput) {
+      this.wasFullscreenBeforeFile = document.body.classList.contains('fullscreen-mode') || Boolean(document.fullscreenElement);
+      this.isWaitingForFilePicker = true;
+      cameraInput.value = '';
+      cameraInput.click();
+    }
+  }
+
+  async captureScreenToBoard() {
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+      this.showToast('📱 스마트폰·태블릿에서는 화면 스크린샷 촬영 후 [📋 붙여넣기] 또는 [🖼️ 사진·스샷]을 누르면 1초 만에 들어옵니다!');
+      return;
+    }
+    try {
+      this.showToast('🖥️ 캡처할 [브라우저 탭], [프로그램 창], 또는 [전체 화면]을 선택하세요!');
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
+      const video = document.createElement('video');
+      video.playsInline = true;
+      video.muted = true;
+      video.srcObject = stream;
+      await video.play();
+
+      // 선택된 창/화면의 첫 고화질 프레임이 완전히 안정화될 때까지 잠시 대기
+      await new Promise((resolve) => setTimeout(resolve, 180));
+
+      const vw = Math.max(1, video.videoWidth || 1920);
+      const vh = Math.max(1, video.videoHeight || 1080);
+      const capCanvas = document.createElement('canvas');
+      capCanvas.width = vw;
+      capCanvas.height = vh;
+      const capCtx = capCanvas.getContext('2d');
+      capCtx.drawImage(video, 0, 0, vw, vh);
+
+      // 1장 스냅샷 추출 즉시 화면 공유 스트림 완전 종료!
+      stream.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+
+      const blob = await new Promise((resolve) => capCanvas.toBlob(resolve, 'image/png'));
+      if (!blob) {
+        this.showToast('⚠️ 화면 캡처 이미지를 생성하지 못했습니다.');
+        return;
+      }
+      const file = new File([blob], `screen_capture_${Date.now()}.png`, { type: 'image/png' });
+      file._customClipboardLabel = '화면 캡처';
+      this._isReplacingViaNextCrop = false;
+      await this.loadImagesOnePerSlide([file]);
+    } catch (err) {
+      if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
+        this.showToast('ℹ️ 화면 캡처가 취소되었습니다.');
+      } else {
+        console.warn('Screen capture failed:', err);
+        this.showToast('📱 이 기기에서는 스크린샷 촬영 후 [📋 붙여넣기] 또는 [🖼️ 사진·스샷]을 이용해 주세요.');
+      }
+    }
+  }
+
   loadSamplePdf() {
     this.showToast('⏳ 2025 수능 수학 샘플 시험지를 여는 중입니다...');
     try {
@@ -6952,7 +7238,7 @@ class GraphApp {
     }
     if (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) {
       this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-      await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+      await this.loadPdfFromArrayBuffer(this._cachedPdfBytes, this.pdfFileName || (meta && meta.fileName) || '교재.pdf', { preserveScroll: true, skipIdbSave: true, openModalOnly: true });
       this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
       this.togglePdfCropMode(autoCrop);
       return true;
@@ -6971,7 +7257,7 @@ class GraphApp {
           if (typeof cachedRec.zoom === 'number' && cachedRec.zoom >= 0.5) this.pdfZoom = cachedRec.zoom;
         }
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
-        await this.loadPdfFromArrayBuffer(normBytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true, skipIdbSave: true });
+        await this.loadPdfFromArrayBuffer(normBytes, cachedRec.fileName || '교재.pdf', { preserveScroll: true, skipIdbSave: true, openModalOnly: true });
         this._isReplacingViaNextCrop = Boolean(isNextCaptureSlide);
         this.togglePdfCropMode(autoCrop);
         return true;
@@ -7028,8 +7314,6 @@ class GraphApp {
       const titleEl = document.getElementById('pdfFileName');
       if (titleEl) { titleEl.textContent = fileName; titleEl.title = fileName; }
 
-      // 처음 열 때도 무조건 [✋ 이동] 모드로 먼저 열려 원하는 문제 위치로 자유롭게 이동한 뒤 [✂️ 영역 캡처]를 누를 수 있도록 통일!
-      this.openPdfModal(true, false);
       try {
         const firstPage = await pdf.getPage(1);
         const unscaledVp = firstPage.getViewport({ scale: 1.0 });
@@ -7047,6 +7331,21 @@ class GraphApp {
       const lbl = document.getElementById('lblPdfZoom');
       if (lbl) lbl.textContent = `${Math.round(this.pdfZoom * 100)}%`;
 
+      const openModalOnly = Boolean(options && options.openModalOnly);
+      if (!openModalOnly) {
+        // 🌟 Penchat: PDF 파일을 열면 복잡한 캡처 모달을 거치지 않고 즉시 1페이지를 메인 칠판에 펼쳐 바로 펜·손가락으로 그릴 수 있게 직행!
+        this._savePdfViewStateMeta();
+        await this.openPdfPageOnBoard(1);
+        if (pdf.numPages > 1) {
+          this.showToast(`📄 ${fileName} (1 / ${pdf.numPages}페이지) 준비 완료! 바로 그리거나 상단 [+] 버튼으로 다음 페이지·영역 캡처를 추가하세요.`);
+        } else {
+          this.showToast(`📄 ${fileName} 준비 완료! 펜이나 손가락으로 바로 그리며 설명하세요.`);
+        }
+        return pdf;
+      }
+
+      // [페이지 선택 / 영역 캡처] 메뉴로 열었을 때는 전체 페이지 스크롤 & 캡처 모달 오픈
+      this.openPdfModal(true, false);
       this.renderAllPdfPages(true);
       if (preserveScroll) {
         const viewport = document.getElementById('pdfViewport');
@@ -7068,13 +7367,7 @@ class GraphApp {
       this._savePdfViewStateMeta();
       this.syncPdfModalModeUI();
       this.syncLessonPlaylistNavBarUI();
-      if (this.lessonTeachingMode === 'page') {
-        this.showToast(`📄 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 시작할 페이지에서 [📄 이 페이지 열기]를 눌러주세요.`);
-      } else if (this.lessonTeachingMode === 'crop') {
-        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 화면을 이동한 뒤 [✂️ 영역 캡처] 또는 [📚 여러 문제 캡처]를 눌러주세요.`);
-      } else {
-        this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) 로드 완료! 상단에서 [✂️ 영역 캡처] 또는 [📄 이 페이지 열기]를 선택해 수업을 시작하세요.`);
-      }
+      this.showToast(`📑 ${fileName} (총 ${pdf.numPages}페이지) — 원하는 페이지에서 [📄 이 페이지 열기] 또는 [✂️ 영역 캡처]를 선택하세요.`);
       return pdf;
     }).catch(err => {
       console.error('PDF 로드 실패:', err);
@@ -7104,12 +7397,9 @@ class GraphApp {
   syncCloudHubRailLockUI() {
     const btnImport = document.getElementById('btnPdfImport');
     const btnCloudHub = document.getElementById('btnCloudHub');
-    const isLocked = (this.lessonTeachingMode === 'crop' || this.lessonTeachingMode === 'page');
     if (btnImport) {
-      btnImport.classList.toggle('rail-btn-locked-disabled', isLocked);
-      btnImport.title = isLocked
-        ? '수업 모드 확정됨 (우측 상단 캔버스바에서 추가하거나 [전체 비우기] 후 새로 불러오세요)'
-        : '파일 열기 (PDF · 이미지 · .graphly)';
+      btnImport.classList.remove('rail-btn-locked-disabled');
+      btnImport.title = '빠른 불러오기 (붙여넣기 · 사진·스샷 · 카메라 촬영 · 화면 캡처 · PDF)';
     }
     if (btnCloudHub) {
       btnCloudHub.classList.remove('rail-btn-locked-disabled');
@@ -7118,20 +7408,17 @@ class GraphApp {
   }
 
   syncPdfModalModeUI() {
-    const mode = this.lessonTeachingMode; // null (미정: 3개 모두 표시) | 'crop' | 'page'
-    const showCropBtns = (mode !== 'page');
-    const showPageBtn = (mode !== 'crop');
     const btnCropToggle = document.getElementById('btnPdfCropToggle');
     const btnMultiCrop = document.getElementById('btnPdfMultiCropMode');
     const btnOpenFullPage = document.getElementById('btnPdfOpenFullPage');
     if (btnCropToggle) {
-      btnCropToggle.style.display = showCropBtns ? 'inline-flex' : 'none';
+      btnCropToggle.style.display = 'inline-flex';
     }
     if (btnMultiCrop) {
-      btnMultiCrop.style.display = showCropBtns ? 'inline-flex' : 'none';
+      btnMultiCrop.style.display = 'inline-flex';
     }
     if (btnOpenFullPage) {
-      btnOpenFullPage.style.display = showPageBtn ? 'inline-flex' : 'none';
+      btnOpenFullPage.style.display = 'inline-flex';
     }
     this.syncPdfMultiCropUI();
   }
@@ -7841,8 +8128,8 @@ class GraphApp {
     if (!this.isInkMode) {
       this.toggleInkMode(true);
     }
-    // PDF 1페이지를 불러왔을 때는 이전 도구가 무엇이었든 무조건 이동 모드(select)로 시작하여 확대/초점 조절부터 편하게!
-    this.setActiveInkTool('select');
+    // 🌟 Penchat: PDF 페이지를 불러왔을 때 즉시 펜이나 손가락으로 그릴 수 있도록 기본 도구를 펜(pen)으로 시작!
+    this.setActiveInkTool('pen');
 
     if (replaceMode) {
       this._finalizeAppendedCaptureSlide('');
@@ -9592,25 +9879,28 @@ class GraphApp {
 
   async loadImagesOnePerSlide(imageFiles) {
     if (!Array.isArray(imageFiles) || imageFiles.length === 0) return;
-    if (this.lessonTeachingMode === 'page') {
-      this.showToast('⚠️ 페이지 모드 수업 중에는 이미지 카드를 추가할 수 없습니다.');
-      return;
-    }
 
-    const readAsDataURL = (file) => new Promise((resolve) => {
+    const readAsDataURLWithAspect = (file) => new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (evt) => {
-        const rawBase = (file._customClipboardLabel || file.name || '이미지 문제').replace(/\.[^/.]+$/, '');
-        resolve({
-          name: (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase),
-          dataUrl: evt.target.result
-        });
+        const dataUrl = evt.target.result;
+        const rawBase = (file._customClipboardLabel || file.name || '이미지').replace(/\.[^/.]+$/, '');
+        const cleanName = (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase);
+        const probeImg = new Image();
+        probeImg.onload = () => {
+          const aspect = (probeImg.naturalWidth > 0 && probeImg.naturalHeight > 0)
+            ? (probeImg.naturalHeight / probeImg.naturalWidth)
+            : 0.75;
+          resolve({ name: cleanName, dataUrl, aspect });
+        };
+        probeImg.onerror = () => resolve({ name: cleanName, dataUrl, aspect: 0.75 });
+        probeImg.src = dataUrl;
       };
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
 
-    const loadedItems = (await Promise.all(imageFiles.map(readAsDataURL))).filter(Boolean);
+    const loadedItems = (await Promise.all(imageFiles.map(readAsDataURLWithAspect))).filter(Boolean);
     if (loadedItems.length === 0) return;
 
     const hasExisting = Boolean(this._isReplacingViaNextCrop || this.hasAnyWorkspaceContent());
@@ -9630,12 +9920,11 @@ class GraphApp {
       this.isLessonPlaylistActive = true;
     }
     const firstAddedSlideIdx = this.lessonPlaylistSlides.length;
-    const targetW = Math.round(Math.min(720, Math.max(480, window.innerWidth * 0.42)));
 
     loadedItems.forEach((item) => {
       this.resetBoardAndProblemCardsForNext();
       this.audioSyncData = null;
-      this.setProblemCard(item.dataUrl, item.name, null, targetW);
+      this.setProblemCard(item.dataUrl, item.name, null, null, { knownAspect: item.aspect, centerOnStage: true });
       const slideNum = this.lessonPlaylistSlides.length + 1;
       const slide = this.serializeFullSlideState(item.name || String(slideNum));
       this.lessonPlaylistSlides.push(slide);
@@ -9663,14 +9952,17 @@ class GraphApp {
       }
     }
     this.syncLessonPlaylistNavBarUI();
+    if (typeof this.syncPenchatEmptyGuideUI === 'function') {
+      this.syncPenchatEmptyGuideUI();
+    }
     this.render();
 
     if (loadedItems.length === 1) {
       this.showToast(hasExisting
-        ? `⏭️ 새 캔버스에 이미지 문제 [${loadedItems[0].name}]을(를) 열었습니다!`
-        : `📁 이미지 문제 [${loadedItems[0].name}]을(를) 칠판에 등록했습니다!`);
+        ? `⏭️ 새 캔버스에 [${loadedItems[0].name}]을(를) 불러왔습니다! 바로 그릴 수 있습니다.`
+        : `✨ [${loadedItems[0].name}] 준비 완료! 펜이나 손가락으로 바로 그리며 설명하세요.`);
     } else {
-      this.showToast(`📚 ${loadedItems.length}개의 이미지 문제를 캔버스당 1문제씩(펼친 상태) 등록했습니다! 우상단 [<] [>] 버튼으로 넘기며 수업하세요.`);
+      this.showToast(`📚 ${loadedItems.length}장의 이미지를 캔버스별로 등록했습니다! 상단 [<] [>] 버튼으로 넘기며 설명하세요.`);
     }
   }
 
@@ -9995,6 +10287,8 @@ class GraphApp {
     if (sourceCanvas && sourceCanvas.width && sourceCanvas.height) {
       this.problemCardImage = sourceCanvas;
       this.problemCardAspect = sourceCanvas.height / sourceCanvas.width;
+    } else if (options && typeof options.knownAspect === 'number' && options.knownAspect > 0) {
+      this.problemCardAspect = options.knownAspect;
     }
 
     const imgObj = new Image();
@@ -10016,25 +10310,46 @@ class GraphApp {
     if (img) img.src = dataUrl;
     if (title) {
       if (typeof pageNum === 'number') {
-        title.textContent = `문제 (p.${pageNum})`;
+        title.textContent = `문서 (p.${pageNum})`;
       } else {
-        title.textContent = `문제 (${pageNum})`;
+        title.textContent = `${pageNum}`;
       }
     }
 
-    // PDF에서 크롭한 화면 크기를 유지(+15% 확대)하여 메인 창에서 다시 키울 필요가 없도록 설정!
-    const cardW = initialWidth || 520;
+    // 🌟 Penchat: PC·태블릿·모바일(390px 스마트폰 포함) 어떤 화면 크기에서도 상·하단 툴바 사이에 큼직하고 선명하게 중앙 배치!
+    const vw = Math.max(320, window.innerWidth || 1280);
+    const vh = Math.max(480, window.innerHeight || 800);
+    const sidePad = vw < 640 ? 20 : 72;
+    const availW = Math.max(260, Math.min(1120, vw - sidePad));
+    const availH = Math.max(220, vh - 166); // 상단 캡슐(62px) + 카드 헤더(28px) + 하단 펜 독(76px) 여유 확보
+    const aspect = (typeof this.problemCardAspect === 'number' && this.problemCardAspect > 0.05) ? this.problemCardAspect : 0.72;
+
+    let cardW = initialWidth || Math.round(availW * (vw < 640 ? 0.96 : 0.78));
+    cardW = Math.min(cardW, availW);
+    if (cardW * aspect > availH) {
+      cardW = Math.max(Math.min(240, availW), Math.round(availH / aspect));
+    }
+    const estCardH = Math.round(cardW * aspect) + 28;
+    const centerOnStage = !options || options.centerOnStage !== false;
+    const baseX = centerOnStage
+      ? Math.max(10, Math.round((vw - cardW) / 2))
+      : Math.min(72, Math.max(10, vw - cardW - 10));
+    const baseY = centerOnStage
+      ? Math.max(60, Math.round(58 + Math.max(0, (availH + 28 - estCardH) / 2)))
+      : 58;
 
     if (widget) {
-      widget.classList.remove('minimized', 'card-ink-active', 'card-laser-active');
+      const shouldInkActive = (this.activeInkTool !== 'select');
+      widget.classList.remove('minimized', 'card-laser-active');
+      widget.classList.toggle('card-ink-active', shouldInkActive);
       const pInkBtn = document.getElementById('btnProblemCardLaser');
-      if (pInkBtn) pInkBtn.classList.remove('active');
+      if (pInkBtn) pInkBtn.classList.toggle('active', shouldInkActive);
       if (widget._cardLaserState) widget._cardLaserState.active = false;
       widget.style.display = 'flex';
-      this.problemCardBaseX = 72;
-      this.problemCardBaseY = 18;
-      widget.style.left = '72px';
-      widget.style.top = '18px';
+      this.problemCardBaseX = baseX;
+      this.problemCardBaseY = baseY;
+      widget.style.left = `${baseX}px`;
+      widget.style.top = `${baseY}px`;
       widget.style.width = `${cardW}px`;
       this.boardPanX = 0;
       this.boardPanY = 0;
@@ -23478,12 +23793,16 @@ class GraphApp {
           pImg.src = pc.imgSrc;
         }
       }
-      if (pTitle) pTitle.textContent = pc.titleText || '문제';
+      if (pTitle) pTitle.textContent = pc.titleText || '문서';
       if (pToggle) pToggle.textContent = pc.toggleText || (pc.minimized ? '▸' : '▾');
       pWidget.classList.toggle('minimized', Boolean(pc.minimized));
+      const shouldInkOnCard = (this.activeInkTool !== 'select');
+      pWidget.classList.toggle('card-ink-active', shouldInkOnCard);
+      const pInkBtn = document.getElementById('btnProblemCardLaser');
+      if (pInkBtn) pInkBtn.classList.toggle('active', shouldInkOnCard);
       pWidget.style.transform = '';
       pWidget.style.left = pc.left || '72px';
-      pWidget.style.top = pc.top || '18px';
+      pWidget.style.top = pc.top || '58px';
       pWidget.style.width = pc.width || '520px';
       if (pc.zIndex) pWidget.style.zIndex = pc.zIndex;
       pWidget.style.display = pc.display || 'flex';
@@ -28908,8 +29227,7 @@ class GraphApp {
       // 수선(📍), 텍스트(🔤), 영역캡처(📸) 등 정밀 도구 모드에서는 손날(e.pointerType === 'touch')이 닿아도
       // 절대 모드가 풀리거나 오작동하지 않고 오직 펜슬(pen)과 마우스(mouse)로만 작동합니다!
       const isRawTouchEvent = Boolean(e && (e.pointerType === 'touch' || (e.touches && e.touches.length > 0 && !e.pointerType)));
-      const isWideCapacitiveFinger = Boolean(e && e.pointerType === 'touch' && ((e.width || 0) >= 32 || (e.height || 0) >= 32));
-      const isFingerOrPalmTouch = isRawTouchEvent && !this.isPinpointStylusTouch(e) && (this.isStylusPalmRejectionActive() || isWideCapacitiveFinger);
+      const isFingerOrPalmTouch = isRawTouchEvent && !this.isPinpointStylusTouch(e) && this.isStylusPalmRejectionActive();
 
       // 🌟 [필기 모드 가상 스타일러스 펜]: 터치/클릭 즉시 펜 위치 동기화
       if (this.isInkMode && !isFingerOrPalmTouch) {
