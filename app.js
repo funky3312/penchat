@@ -2564,15 +2564,86 @@ class GraphApp {
     const btnSticker = document.getElementById('btnInkSticker');
     const btnAxes = document.getElementById('btnInkToggleAxes');
 
-    if (btnSelect) btnSelect.onclick = () => this.setActiveInkTool('select');
-    if (btnPen) btnPen.onclick = () => this.setActiveInkTool('pen');
-    if (btnHighlighter) btnHighlighter.onclick = () => this.setActiveInkTool('highlighter');
-    if (btnEraser) btnEraser.onclick = () => this.setActiveInkTool('eraser');
-    if (btnLasso) btnLasso.onclick = () => this.setActiveInkTool('lasso');
-    if (btnLaser) btnLaser.onclick = () => this.setActiveInkTool('laser');
-    if (btnSticker) btnSticker.onclick = () => this.setActiveInkTool('sticker');
+    const penThicknessPopover = document.getElementById('penThicknessMiniPopover');
+    const syncPenThicknessChips = (sz) => {
+      if (!penThicknessPopover) return;
+      const num = Number(sz) || 4.2;
+      penThicknessPopover.querySelectorAll('.pen-thickness-chip').forEach(chip => {
+        const chipSz = parseFloat(chip.dataset.penSize || '4.2');
+        chip.classList.toggle('active', Math.abs(chipSz - num) < 1.1);
+      });
+    };
+
+    const closePenThicknessPopover = () => {
+      if (penThicknessPopover) penThicknessPopover.style.display = 'none';
+    };
+
+    if (btnSelect) btnSelect.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('select'); };
+    if (btnPen) {
+      btnPen.onclick = (e) => {
+        e.stopPropagation();
+        if (this.activeInkTool === 'pen' && penThicknessPopover) {
+          const isOpen = penThicknessPopover.style.display !== 'none';
+          syncPenThicknessChips(this.currentInkSize || 4.2);
+          penThicknessPopover.style.display = isOpen ? 'none' : 'flex';
+        } else {
+          closePenThicknessPopover();
+          this.setActiveInkTool('pen');
+        }
+      };
+    }
+    if (penThicknessPopover) {
+      penThicknessPopover.querySelectorAll('.pen-thickness-chip').forEach(chip => {
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          const sz = parseFloat(chip.dataset.penSize || '4.2');
+          this.setInkSize(sz);
+          syncPenThicknessChips(sz);
+          closePenThicknessPopover();
+        };
+      });
+      document.addEventListener('pointerdown', (e) => {
+        if (penThicknessPopover.style.display === 'none') return;
+        if (!penThicknessPopover.contains(e.target) && (!btnPen || !btnPen.contains(e.target))) {
+          closePenThicknessPopover();
+        }
+      }, true);
+    }
+    if (btnHighlighter) btnHighlighter.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('highlighter'); };
+    if (btnEraser) btnEraser.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('eraser'); };
+    if (btnLasso) btnLasso.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('lasso'); };
+    if (btnLaser) btnLaser.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('laser'); };
+    if (btnSticker) btnSticker.onclick = () => { closePenThicknessPopover(); this.setActiveInkTool('sticker'); };
     if (btnAxes) btnAxes.onclick = () => this.toggleAxes();
     this.updateAxesUI();
+
+    // 🌟 Penchat 빈 캔버스 1초 가이드(#penchatEmptyGuide) 바인딩
+    const emptyGuideEl = document.getElementById('penchatEmptyGuide');
+    const btnEmptyGuideOpen = document.getElementById('btnEmptyGuideOpenFile');
+    if (btnEmptyGuideOpen) {
+      btnEmptyGuideOpen.onclick = (e) => {
+        e.stopPropagation();
+        const fileInput = document.getElementById('pdfFileInput');
+        if (fileInput) fileInput.click();
+      };
+    }
+    if (this.canvas && emptyGuideEl) {
+      this.canvas.addEventListener('pointerdown', () => {
+        if (emptyGuideEl.style.display !== 'none') {
+          emptyGuideEl.style.display = 'none';
+        }
+      }, { passive: true });
+    }
+    this.syncPenchatEmptyGuideUI = () => {
+      if (!emptyGuideEl) return;
+      const hasStrokes = Array.isArray(this.inkStrokes) && this.inkStrokes.length > 0;
+      const hasPdfPage = Boolean(this.isPdfFullPageBoard && this.pdfFullPageBoardData);
+      const hasProblemCard = Boolean(this._hasPrimaryProblemCard && this.problemCardData) || Boolean(Array.isArray(this.extraProblemCards) && this.extraProblemCards.length > 0);
+      const hasGraphCard = Boolean(this._hasPrimaryGraphCard && this.graphCardData) || Boolean(Array.isArray(this.extraGraphCards) && this.extraGraphCards.length > 0);
+      const isBusy = Boolean(this.isAudioRecording || this.isAudioPlaying || this._isSmartViewerActive);
+      const shouldShow = !hasStrokes && !hasPdfPage && !hasProblemCard && !hasGraphCard && !isBusy;
+      emptyGuideEl.style.display = shouldShow ? 'block' : 'none';
+    };
 
     // 색상 선택
     document.querySelectorAll('.ink-color-dot').forEach(dot => {
@@ -6076,35 +6147,12 @@ class GraphApp {
     };
     this._saveQuickPillRemoteSettings = saveRemoteSettings;
 
-    // 저장된 세팅 복원
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (typeof saved.modTools === 'boolean') this.pillModules.tools = saved.modTools;
-        if (typeof saved.modZoom === 'boolean') this.pillModules.zoom = saved.modZoom;
-        if (typeof saved.modColor === 'boolean') this.pillModules.color = saved.modColor;
-        if (typeof saved.modExtra === 'boolean') this.pillModules.extra = saved.modExtra;
-        if (typeof saved.hideBottomBar === 'boolean') {
-          this.isBottomInkBarHidden = saved.hideBottomBar;
-          const dock = document.getElementById('inkFloatingToolbar');
-          if (dock && this.isBottomInkBarHidden) dock.style.display = 'none';
-          const btnHeader = document.getElementById('btnInkMode');
-          if (btnHeader) btnHeader.classList.toggle('active', !this.isBottomInkBarHidden);
-        }
-        if (typeof saved.left === 'number' && typeof saved.top === 'number') {
-          const clampedL = Math.max(64, Math.min((window.innerWidth || 1440) - 120, saved.left));
-          const clampedT = Math.max(12, Math.min((window.innerHeight || 900) - 80, saved.top));
-          remote.style.left = `${clampedL}px`;
-          remote.style.top = `${clampedT}px`;
-        }
-        if (saved.isOpen) {
-          this.isQuickPillRemoteOpen = true;
-          remote.style.display = 'flex';
-          if (btnRail) btnRail.classList.add('active');
-        }
-      }
-    } catch (err) { }
+    // Penchat 초간편 2-Bar 모드: 하단 필기 독은 항상 표시하고 미니 리모컨은 기본 비활성화
+    this.isBottomInkBarHidden = false;
+    this.isQuickPillRemoteOpen = false;
+    const dockElInit = document.getElementById('inkFloatingToolbar');
+    if (dockElInit) dockElInit.style.display = 'flex';
+    remote.style.display = 'none';
 
     if (btnRail) {
       btnRail.onclick = (e) => {
@@ -11861,6 +11909,9 @@ class GraphApp {
     }
     if (typeof this.syncLessonPlaylistNavBarUI === 'function') {
       this.syncLessonPlaylistNavBarUI();
+    }
+    if (typeof this.syncPenchatEmptyGuideUI === 'function') {
+      this.syncPenchatEmptyGuideUI();
     }
   }
 
@@ -18584,7 +18635,7 @@ class GraphApp {
       if (inputG) compiledG = compileMathExpr(inputG.value, 'x');
       if (inputF) compiledF = compileMathExpr(inputF.value, 't');
       if (typeof st.tMin === 'number' && typeof st.tMax === 'number' && st.tMax > st.tMin &&
-          typeof st.yMin === 'number' && typeof st.yMax === 'number' && st.yMax > st.yMin) {
+        typeof st.yMin === 'number' && typeof st.yMax === 'number' && st.yMax > st.yMin) {
         tMin = st.tMin;
         tMax = st.tMax;
         yMin = st.yMin;
@@ -19195,6 +19246,44 @@ class GraphApp {
         const finalUrl = await ensureCloudShareLinkOnDemand();
         await copyTextToClipboard(finalUrl);
         flashButtonLabel(lblBtnCopyShare, '링크 복사 완료', '공유 링크 복사');
+      };
+    }
+
+    // 🔗 Loom형 우상단 원클릭 [링크 복사] 버튼: 모달을 열지 않고 즉시 공유 링크 생성 & 클립보드 복사!
+    const btnQuickOneClickShare = document.getElementById('btnQuickOneClickShare');
+    const lblQuickOneClickShare = document.getElementById('lblQuickOneClickShare');
+    if (btnQuickOneClickShare) {
+      btnQuickOneClickShare.onclick = async (e) => {
+        e.stopPropagation();
+        if (btnQuickOneClickShare.dataset.busy === '1') return;
+        btnQuickOneClickShare.dataset.busy = '1';
+        try {
+          if (this.isAudioRecording) {
+            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '녹화 마무리 중...';
+            await this.stopAudioRecording();
+          }
+          const allSlides = this._getActiveSlidesForExport('수업 노트');
+          this.exportScope = (allSlides && allSlides.length > 1) ? 'all' : 'current';
+          this.exportFilter = {
+            includeProblem: true,
+            includeGraph: true,
+            includeInk: true,
+            includeAudio: true
+          };
+          syncFilterAndInvalidateCache();
+          if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '링크 생성 중...';
+          const finalUrl = await ensureCloudShareLinkOnDemand();
+          await copyTextToClipboard(finalUrl);
+          btnQuickOneClickShare.classList.add('is-copied');
+          if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '✓ 링크 복사됨';
+          this.showToast('✅ 공유 링크가 복사되었습니다! 카톡·메신저에 바로 붙여넣기(Ctrl+V) 하세요.');
+          setTimeout(() => {
+            btnQuickOneClickShare.classList.remove('is-copied');
+            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '링크 복사';
+          }, 2200);
+        } finally {
+          btnQuickOneClickShare.dataset.busy = '0';
+        }
       };
     }
 
@@ -19894,7 +19983,7 @@ class GraphApp {
     const copySupportEmailWithToast = () => {
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText('help@cubiolab.com').catch(() => {});
+          navigator.clipboard.writeText('help@cubiolab.com').catch(() => { });
         }
       } catch (err) { }
       this.showToast('📋 help@cubiolab.com 이메일 주소가 복사되었습니다!');
@@ -20937,10 +21026,10 @@ class GraphApp {
       const q = String(searchQuery || '').trim().toLowerCase();
       const filteredPool = q
         ? validFolders.filter(fPath => {
-            const selfMatch = fPath.toLowerCase().includes(q);
-            const descMatch = validFolders.some(other => other.startsWith(fPath + '/') && other.toLowerCase().includes(q));
-            return selfMatch || descMatch;
-          })
+          const selfMatch = fPath.toLowerCase().includes(q);
+          const descMatch = validFolders.some(other => other.startsWith(fPath + '/') && other.toLowerCase().includes(q));
+          return selfMatch || descMatch;
+        })
         : validFolders;
 
       let renderedCount = 0;
@@ -24493,7 +24582,7 @@ class GraphApp {
         let remainingConflicts = 0;
         for (let j = i + 1; j < parsedCandidates.length; j++) {
           if (this._findDuplicateCloudItem(parsedCandidates[j].rawTitle, destFolder) ||
-              parsedCandidates[j].rawTitle.trim().toLowerCase() === cand.rawTitle.trim().toLowerCase()) {
+            parsedCandidates[j].rawTitle.trim().toLowerCase() === cand.rawTitle.trim().toLowerCase()) {
             remainingConflicts++;
           }
         }
@@ -24586,8 +24675,8 @@ class GraphApp {
     const items = selectedFileIds.length > 0
       ? selectedFileIds.map(id => (this.myLibraryCache || []).find(it => it && it.id === id)).filter(Boolean)
       : Array.from(document.querySelectorAll('#myLibraryList .cloud-item-chk:checked'))
-          .map(box => this.myLibraryCache[parseInt(box.getAttribute('data-lib-idx'), 10)])
-          .filter(Boolean);
+        .map(box => this.myLibraryCache[parseInt(box.getAttribute('data-lib-idx'), 10)])
+        .filter(Boolean);
     items.forEach(item => {
       if (!item) return;
       if (Array.isArray(item.playlistSlides) && item.playlistSlides.length > 0) {
@@ -37327,7 +37416,7 @@ class GraphApp {
             this.problemCardImage.height > 0
           ) ? this.problemCardImage : (
             el.classList.contains('extra-problem-card-widget') &&
-            Array.isArray(this.extraProblemCards)
+              Array.isArray(this.extraProblemCards)
               ? (() => {
                 const found = this.extraProblemCards.find(c => c && c.el === el && c.sourceCanvas && c.sourceCanvas.width > 0);
                 return (found && found.sourceCanvas) ? found.sourceCanvas : imgEl;
@@ -38351,17 +38440,28 @@ class GraphApp {
     const btnReRecord = document.getElementById('btnAudioReRecord');
     const btnDelete = document.getElementById('btnAudioSyncDelete');
     const btnCloseBar = document.getElementById('btnAudioSyncCloseBar');
+    const btnQuickPreviewAudio = document.getElementById('btnQuickPlayRecordedAudio');
 
     if (btnFab) {
       btnFab.onclick = (e) => {
         e.stopPropagation();
         if (this.isAudioRecording) {
-          this._isAudioRecMenuOpen = !this._isAudioRecMenuOpen;
-          this.syncAudioRecordUI();
+          this._isAudioRecMenuOpen = false;
+          this.stopAudioRecording();
         } else {
           this._isAudioRecMenuOpen = false;
           this.startAudioRecording();
         }
+      };
+    }
+
+    if (btnQuickPreviewAudio) {
+      btnQuickPreviewAudio.onclick = (e) => {
+        e.stopPropagation();
+        if (!this.audioSyncData || !this.audioSyncData.durationMs) return;
+        this._isAudioSyncPlayerVisible = true;
+        this.syncAudioRecordUI();
+        this.playAudioSync();
       };
     }
 
@@ -40469,17 +40569,26 @@ class GraphApp {
     }
 
     const lblTimer = document.getElementById('lblAudioRecordTimer');
+    const lblQuickBtn = document.getElementById('lblQuickRecordBtn');
     if (lblTimer) lblTimer.textContent = '00:00';
+    if (lblQuickBtn) lblQuickBtn.textContent = '● 00:00';
     if (this._audioRecordTimerId) clearInterval(this._audioRecordTimerId);
     this._audioRecordTimerId = setInterval(() => {
       if (!this.isAudioRecording) return;
       const elapsed = this.getAudioRecordElapsedMs();
-      if (lblTimer) lblTimer.textContent = this.formatAudioTimeMmSs(elapsed);
+      const timeStr = this.formatAudioTimeMmSs(elapsed);
+      if (lblTimer) lblTimer.textContent = timeStr;
+      if (lblQuickBtn) {
+        lblQuickBtn.textContent = this.isAudioRecordPaused ? `⏸ ${timeStr}` : `● ${timeStr}`;
+      }
       this._recordAudioWorkspaceStateIfNeeded(false);
     }, 200);
 
     this.syncAudioRecordUI();
-    this.showToast('🎬 영상 녹화가 시작되었습니다. (다시 누르면 일시정지 / 종료)');
+    if (typeof this.syncPenchatEmptyGuideUI === 'function') {
+      this.syncPenchatEmptyGuideUI();
+    }
+    this.showToast('🎙️ 음성 녹화가 시작되었습니다. 설명이 끝나면 [완료] 또는 [링크 복사]를 누르세요.');
   }
 
   async stopAudioRecording() {
@@ -40614,13 +40723,27 @@ class GraphApp {
 
     const hasAudio = Boolean(this.audioSyncData && this.audioSyncData.durationMs > 0);
     const isPaused = Boolean(this.isAudioRecordPaused);
+    const lblQuickBtn = document.getElementById('lblQuickRecordBtn');
+    const btnQuickPreview = document.getElementById('btnQuickPlayRecordedAudio');
     if (btnFab) {
       btnFab.classList.toggle('is-recording', Boolean(this.isAudioRecording));
       btnFab.classList.toggle('is-paused', Boolean(this.isAudioRecording && isPaused));
       btnFab.classList.toggle('has-audio', hasAudio && !this.isAudioRecording);
     }
+    if (lblQuickBtn) {
+      if (this.isAudioRecording) {
+        const elapsed = this.getAudioRecordElapsedMs();
+        const timeStr = this.formatAudioTimeMmSs(elapsed);
+        lblQuickBtn.textContent = isPaused ? `⏸ ${timeStr}` : `● ${timeStr}`;
+      } else {
+        lblQuickBtn.textContent = hasAudio ? '재녹음' : '음성 녹화';
+      }
+    }
     if (sideMenu) {
-      sideMenu.style.display = (this.isAudioRecording && this._isAudioRecMenuOpen) ? 'flex' : 'none';
+      sideMenu.style.display = this.isAudioRecording ? 'inline-flex' : 'none';
+    }
+    if (btnQuickPreview) {
+      btnQuickPreview.style.display = (hasAudio && !this.isAudioRecording) ? 'inline-flex' : 'none';
     }
 
     if (!bar) return;
