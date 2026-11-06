@@ -7851,27 +7851,12 @@ class GraphApp {
       : pageCanvas;
 
     ctx.save();
-    if (!isExport && !isActivelyMovingCamera) {
-      ctx.shadowColor = isLight ? 'rgba(15, 23, 42, 0.14)' : 'rgba(0, 0, 0, 0.50)';
-      ctx.shadowBlur = isLight ? 20 : 26;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 5;
-    }
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(drawX, drawY, drawW, drawH);
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = isActivelyMovingCamera ? 'medium' : 'high';
     ctx.drawImage(sourceTex, drawX, drawY, drawW, drawH);
-
-    if (!isExport) {
-      ctx.strokeStyle = isLight ? 'rgba(148, 163, 184, 0.55)' : 'rgba(255, 255, 255, 0.24)';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(drawX, drawY, drawW, drawH);
-    }
     ctx.restore();
   }
 
@@ -8077,33 +8062,37 @@ class GraphApp {
       this._pdfPageCanvasCache[targetPage] = pageCanvas;
     }
 
-    // 🌟 [대표님 피드백 반영: PDF 삽입 시 화면 거의 꽉 차게 확대 삽입 + 그래프 소환 시 아담한 비율 보장!] 🌟
+    // 🌟 Penchat: PDF 페이지 삽입 시 불필요한 여백 없이 화면(sw × sh)에 100% 꽉 차게(Full-Fit Contain) 중앙 배치!
     const baseYSpan = 8.4;
     this.ySpan = baseYSpan;
     this.xSpan = 11.5;
     this._suspendedPdfBoardState = null;
     this._isTempPdfProblemCard = false;
     this.enterBoardMode();
+    this.closeProblemCard();
     this.panX = 0;
     this.panY = 0;
     this.setZoomLevel(1.0);
 
     const aspect = pageCanvas.height / Math.max(1, pageCanvas.width);
-    const sw = Math.max(800, this.screenWidth || window.innerWidth || 1920);
-    const sh = Math.max(600, this.screenHeight || window.innerHeight || 1080);
+    const sw = Math.max(320, this.screenWidth || window.innerWidth || 1280);
+    const sh = Math.max(480, this.screenHeight || window.innerHeight || 800);
     const unitScale = (sh / 2) / baseYSpan;
-    const targetScreenW = Math.min(sw - 148, Math.max(sw * 0.84, sh * 1.18));
+    let targetScreenW = sw;
+    let targetScreenH = targetScreenW * aspect;
+    if (targetScreenH > sh) {
+      targetScreenH = sh;
+      targetScreenW = targetScreenH / Math.max(0.05, aspect);
+    }
     const mathW = targetScreenW / unitScale;
-    const mathH = mathW * aspect;
-
-    const topMarginPx = 58;
-    const yTopMath = (sh / 2 - topMarginPx) / unitScale;
+    const mathH = targetScreenH / unitScale;
     const centerX = 0;
-    const centerY = yTopMath - mathH / 2;
+    const centerY = 0;
 
     this.pdfPageBoardData = {
       pageNum: targetPage,
       totalPages: total,
+      isCustomImage: false,
       canvas: pageCanvas,
       dataUrl: '',
       aspect,
@@ -9281,7 +9270,10 @@ class GraphApp {
       // 🌟 [핵심 핀셋 수정: 1페이지 캡처 직후 곧바로 필기하거나 다음 캔버스로 넘어가도 슬라이드 데이터에 초고해상도 벡터 이미지 100% 직결 반영!]
       if (targetRef && targetRef.slideRef) {
         const sRef = targetRef.slideRef;
-        if (targetRef.type === 'primary' && sRef.primaryProblemCard) {
+        if (targetRef.type === 'pdfBoard' && sRef.pdfPageBoardData) {
+          sRef.pdfPageBoardData.dataUrl = ultraDataUrl;
+          if (ultraAspect) sRef.pdfPageBoardData.aspect = ultraAspect;
+        } else if (targetRef.type === 'primary' && sRef.primaryProblemCard) {
           sRef.primaryProblemCard.imgSrc = ultraDataUrl;
           if (ultraAspect) sRef.primaryProblemCard.problemCardAspect = ultraAspect;
         } else if (targetRef.type === 'extra' && Array.isArray(sRef.extraProblems)) {
@@ -9314,6 +9306,14 @@ class GraphApp {
         }
       };
 
+      if (targetRef && targetRef.type === 'pdfBoard' && targetRef.pdfPageBoardData) {
+        const pbd = targetRef.pdfPageBoardData;
+        pbd.dataUrl = ultraDataUrl;
+        pbd.canvas = vecCanvas;
+        schedulePlaylistSync();
+        if (!this.isDrawingInk) this.requestRender();
+        return;
+      }
       if (targetRef && targetRef.type === 'extra' && targetRef.cardItem) {
         const extraCard = targetRef.cardItem;
         if (extraCard && extraCard.el) {
@@ -9888,12 +9888,21 @@ class GraphApp {
         const cleanName = (rawBase.toLowerCase() === 'image' ? '클립보드 캡처' : rawBase);
         const probeImg = new Image();
         probeImg.onload = () => {
+          const nw = Math.max(1, probeImg.naturalWidth || 1200);
+          const nh = Math.max(1, probeImg.naturalHeight || 900);
           const aspect = (probeImg.naturalWidth > 0 && probeImg.naturalHeight > 0)
-            ? (probeImg.naturalHeight / probeImg.naturalWidth)
+            ? (nh / nw)
             : 0.75;
-          resolve({ name: cleanName, dataUrl, aspect });
+          let offC = null;
+          try {
+            offC = document.createElement('canvas');
+            offC.width = nw;
+            offC.height = nh;
+            offC.getContext('2d').drawImage(probeImg, 0, 0);
+          } catch (e) { }
+          resolve({ name: cleanName, dataUrl, aspect, sourceCanvas: offC });
         };
-        probeImg.onerror = () => resolve({ name: cleanName, dataUrl, aspect: 0.75 });
+        probeImg.onerror = () => resolve({ name: cleanName, dataUrl, aspect: 0.75, sourceCanvas: null });
         probeImg.src = dataUrl;
       };
       reader.onerror = () => resolve(null);
@@ -9910,7 +9919,6 @@ class GraphApp {
       return;
     }
 
-    this.setLessonTeachingMode('crop');
     if (hasExisting) {
       this._archiveCurrentBeforeNextCapture();
     }
@@ -9924,7 +9932,7 @@ class GraphApp {
     loadedItems.forEach((item) => {
       this.resetBoardAndProblemCardsForNext();
       this.audioSyncData = null;
-      this.setProblemCard(item.dataUrl, item.name, null, null, { knownAspect: item.aspect, centerOnStage: true });
+      this.setProblemCard(item.dataUrl, item.name, item.sourceCanvas, null, { knownAspect: item.aspect, centerOnStage: true });
       const slideNum = this.lessonPlaylistSlides.length + 1;
       const slide = this.serializeFullSlideState(item.name || String(slideNum));
       this.lessonPlaylistSlides.push(slide);
@@ -10265,104 +10273,131 @@ class GraphApp {
       this.enterBoardMode();
     }
 
-    const widget = document.getElementById('problemCardWidget');
-    const isPrimaryActive = widget && widget.style.display !== 'none' && this.problemCardData;
-
-    // 🌟 [대표님 기획]: 이미 문제 카드가 칠판에 활성화되어 있다면, 기존 문제를 덮어쓰지 않고 추가 문제 카드로 소환!
-    if (isPrimaryActive && !keepGraphMode) {
-      const spawned = this.spawnExtraProblemCard(dataUrl, pageNum, initialWidth, sourceCanvas);
-      this._lastPlacedProblemCardTarget = { type: 'extra', cardItem: spawned, pageNum };
-      return spawned;
+    // 🌟 Penchat: 스샷 이름표 헤더 바([클립보드 캡처 | ▼ | ✏️ | ✕])와 카드 여백을 완전히 제거하고,
+    // 불러온 이미지를 화면(sw × sh)에 100% 꽉 차는 Full-Fit 메인 스테이지(pdfPageBoardData)로 직접 배치합니다!
+    this.closeProblemCard();
+    if (this.extraProblemCards && this.extraProblemCards.length > 0) {
+      this.extraProblemCards.forEach(c => {
+        if (c && c.el && c.el.parentNode) c.el.parentNode.removeChild(c.el);
+      });
+      this.extraProblemCards = [];
     }
 
-    this._isTempPdfProblemCard = Boolean(options && options.isTempPdfCard);
-    this.problemCardData = {
-      imgUrl: dataUrl,
-      pageNum: pageNum
-    };
-    this._lastPlacedProblemCardTarget = { type: 'primary', problemCardData: this.problemCardData, pageNum };
-    this.isProblemCardMinimized = false;
-    this.problemInkStrokes = [];
+    const baseYSpan = 8.4;
+    this.ySpan = baseYSpan;
+    this.xSpan = 11.5;
+    this._suspendedPdfBoardState = null;
+    this._isTempPdfProblemCard = false;
+    this.panX = 0;
+    this.panY = 0;
+    this.setZoomLevel(1.0);
+    this.boardPanX = 0;
+    this.boardPanY = 0;
+    this.boardZoom = 1.0;
 
+    let aspect = 0.75;
     if (sourceCanvas && sourceCanvas.width && sourceCanvas.height) {
-      this.problemCardImage = sourceCanvas;
-      this.problemCardAspect = sourceCanvas.height / sourceCanvas.width;
+      aspect = sourceCanvas.height / Math.max(1, sourceCanvas.width);
     } else if (options && typeof options.knownAspect === 'number' && options.knownAspect > 0) {
-      this.problemCardAspect = options.knownAspect;
+      aspect = options.knownAspect;
     }
 
-    const imgObj = new Image();
-    imgObj.onload = () => {
-      if (imgObj.naturalWidth && imgObj.naturalHeight) {
-        this.problemCardAspect = imgObj.naturalHeight / imgObj.naturalWidth;
-      }
-      if (!sourceCanvas) {
-        this.problemCardImage = imgObj;
-      }
-      this.syncProblemCardRectFromWidget();
-      this.render();
+    const sw = Math.max(320, this.screenWidth || window.innerWidth || 1280);
+    const sh = Math.max(480, this.screenHeight || window.innerHeight || 800);
+    const unitScale = (sh / 2) / baseYSpan;
+    let targetScreenW = sw;
+    let targetScreenH = targetScreenW * aspect;
+    if (targetScreenH > sh) {
+      targetScreenH = sh;
+      targetScreenW = targetScreenH / Math.max(0.05, aspect);
+    }
+    const mathW = targetScreenW / unitScale;
+    const mathH = targetScreenH / unitScale;
+    const centerX = 0;
+    const centerY = 0;
+
+    let pageCanvas = sourceCanvas || null;
+    if (pageCanvas && !pageCanvas._mipCanvas && pageCanvas.width > 0 && pageCanvas.height > 0) {
+      try {
+        const mipC = document.createElement('canvas');
+        mipC.width = Math.max(1, Math.round(pageCanvas.width * 0.5));
+        mipC.height = Math.max(1, Math.round(pageCanvas.height * 0.5));
+        const mipCtx = mipC.getContext('2d');
+        mipCtx.imageSmoothingEnabled = true;
+        mipCtx.imageSmoothingQuality = 'high';
+        mipCtx.drawImage(pageCanvas, 0, 0, mipC.width, mipC.height);
+        pageCanvas._mipCanvas = mipC;
+      } catch (e) { }
+    }
+
+    const pbd = {
+      pageNum: typeof pageNum === 'number' ? pageNum : 1,
+      totalPages: this.pdfTotalPages || 1,
+      isCustomImage: typeof pageNum !== 'number',
+      canvas: pageCanvas,
+      dataUrl: dataUrl || '',
+      aspect,
+      mathW,
+      mathH,
+      centerX,
+      centerY,
+      baseYSpan
     };
-    imgObj.src = dataUrl;
 
-    const img = document.getElementById('problemCardImg');
-    const title = document.getElementById('problemCardTitle');
-
-    if (img) img.src = dataUrl;
-    if (title) {
-      if (typeof pageNum === 'number') {
-        title.textContent = `문서 (p.${pageNum})`;
-      } else {
-        title.textContent = `${pageNum}`;
-      }
+    if (dataUrl) {
+      const imgObj = new Image();
+      imgObj.onload = () => {
+        if (imgObj.naturalWidth > 0 && imgObj.naturalHeight > 0) {
+          const realAspect = imgObj.naturalHeight / imgObj.naturalWidth;
+          pbd.aspect = realAspect;
+          const curSw = Math.max(320, this.screenWidth || window.innerWidth || 1280);
+          const curSh = Math.max(480, this.screenHeight || window.innerHeight || 800);
+          const curUS = (curSh / 2) / (pbd.baseYSpan || 8.4);
+          let tw = curSw;
+          let th = tw * realAspect;
+          if (th > curSh) {
+            th = curSh;
+            tw = th / Math.max(0.05, realAspect);
+          }
+          pbd.mathW = tw / curUS;
+          pbd.mathH = th / curUS;
+          if (!pbd.canvas) {
+            const offC = document.createElement('canvas');
+            offC.width = imgObj.naturalWidth;
+            offC.height = imgObj.naturalHeight;
+            offC.getContext('2d').drawImage(imgObj, 0, 0);
+            try {
+              const mipC = document.createElement('canvas');
+              mipC.width = Math.max(1, Math.round(offC.width * 0.5));
+              mipC.height = Math.max(1, Math.round(offC.height * 0.5));
+              const mipCtx = mipC.getContext('2d');
+              mipCtx.imageSmoothingEnabled = true;
+              mipCtx.imageSmoothingQuality = 'high';
+              mipCtx.drawImage(offC, 0, 0, mipC.width, mipC.height);
+              offC._mipCanvas = mipC;
+            } catch (e) { }
+            pbd.canvas = offC;
+          }
+        }
+        this._inkBakeDirty = true;
+        this.render();
+      };
+      imgObj.src = dataUrl;
+      pbd.img = imgObj;
     }
 
-    // 🌟 Penchat: PC·태블릿·모바일(390px 스마트폰 포함) 어떤 화면 크기에서도 상·하단 툴바 사이에 큼직하고 선명하게 중앙 배치!
-    const vw = Math.max(320, window.innerWidth || 1280);
-    const vh = Math.max(480, window.innerHeight || 800);
-    const sidePad = vw < 640 ? 20 : 72;
-    const availW = Math.max(260, Math.min(1120, vw - sidePad));
-    const availH = Math.max(220, vh - 166); // 상단 캡슐(62px) + 카드 헤더(28px) + 하단 펜 독(76px) 여유 확보
-    const aspect = (typeof this.problemCardAspect === 'number' && this.problemCardAspect > 0.05) ? this.problemCardAspect : 0.72;
+    this.pdfPageBoardData = pbd;
+    this._lastPlacedProblemCardTarget = { type: 'pdfBoard', pdfPageBoardData: pbd, pageNum };
+    this._inkBakeDirty = true;
 
-    let cardW = initialWidth || Math.round(availW * (vw < 640 ? 0.96 : 0.78));
-    cardW = Math.min(cardW, availW);
-    if (cardW * aspect > availH) {
-      cardW = Math.max(Math.min(240, availW), Math.round(availH / aspect));
+    if (!this.isInkMode) {
+      this.toggleInkMode(true);
     }
-    const estCardH = Math.round(cardW * aspect) + 28;
-    const centerOnStage = !options || options.centerOnStage !== false;
-    const baseX = centerOnStage
-      ? Math.max(10, Math.round((vw - cardW) / 2))
-      : Math.min(72, Math.max(10, vw - cardW - 10));
-    const baseY = centerOnStage
-      ? Math.max(60, Math.round(58 + Math.max(0, (availH + 28 - estCardH) / 2)))
-      : 58;
-
-    if (widget) {
-      const shouldInkActive = (this.activeInkTool !== 'select');
-      widget.classList.remove('minimized', 'card-laser-active');
-      widget.classList.toggle('card-ink-active', shouldInkActive);
-      const pInkBtn = document.getElementById('btnProblemCardLaser');
-      if (pInkBtn) pInkBtn.classList.toggle('active', shouldInkActive);
-      if (widget._cardLaserState) widget._cardLaserState.active = false;
-      widget.style.display = 'flex';
-      this.problemCardBaseX = baseX;
-      this.problemCardBaseY = baseY;
-      widget.style.left = `${baseX}px`;
-      widget.style.top = `${baseY}px`;
-      widget.style.width = `${cardW}px`;
-      this.boardPanX = 0;
-      this.boardPanY = 0;
-      this.updateProblemCardPosition();
+    if (this.activeInkTool === 'select') {
+      this.setActiveInkTool('pen');
     }
-
-    const toggleBtn = document.getElementById('iconCardToggle');
-    if (toggleBtn) toggleBtn.textContent = '▾';
-    if (widget) this.bringCardToFront(widget);
-
-    this.updateProblemCardPosition();
-    this.renderProblemCardCanvas();
     this.render();
+    return pbd;
   }
 
 
@@ -14460,12 +14495,6 @@ class GraphApp {
 
     const drawPathOnCtx = (color) => {
       ctx.save();
-      if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2) {
-        const pr = this._lastPdfPageScreenRect;
-        ctx.beginPath();
-        ctx.rect(pr.x, pr.y, pr.w, pr.h);
-        ctx.clip();
-      }
       ctx.strokeStyle = color;
       ctx.fillStyle = color;
       ctx.lineWidth = lineW;
@@ -26515,10 +26544,10 @@ class GraphApp {
       (this._cachedPdfBytes && this._cachedPdfBytes.byteLength > 0) ||
       this.lessonTeachingMode === 'crop' ||
       this.lessonTeachingMode === 'page' ||
-      this.pdfPageBoardData
+      (this.pdfPageBoardData && !this.pdfPageBoardData.isCustomImage)
     );
     const isPdfPageMode = Boolean(
-      this.pdfPageBoardData ||
+      (this.pdfPageBoardData && !this.pdfPageBoardData.isCustomImage) ||
       (this.lessonTeachingMode === 'page' && !this.hasActiveProblemCard())
     );
     if (!hasOpenPdf) {
@@ -29980,13 +30009,6 @@ class GraphApp {
         }
 
         const isHighlighterStroke = (this.activeInkTool === 'highlighter');
-        // 📄 [대표님 기획: PDF 통모드(페이지 모드) 바깥 베젤 영역 필기 시작 차단]
-        if (this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect) {
-          const pr = this._lastPdfPageScreenRect;
-          if (pos.x < pr.x || pos.x > pr.x + pr.width || pos.y < pr.y || pos.y > pr.y + pr.height) {
-            return;
-          }
-        }
         if (neededCleanRenderBeforeFreeze) {
           this.isDrawingInk = false;
           this._hasSceneFreeze = false;
@@ -33096,7 +33118,7 @@ class GraphApp {
       ctx.restore();
 
       const isBoardSplit = this.isBoardMode && (this.currentInkStroke.target === 'graph');
-      const isPdfClip = Boolean(this.isGraphCovered && this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2);
+      const isPdfClip = false;
       if (isBoardSplit || isPdfClip) {
         ctx.save();
         ctx.beginPath();
@@ -33151,9 +33173,8 @@ class GraphApp {
         ctx.fillRect(0, 0, width, height);
       }
     } else {
-      // 🌟 [대표님 긴급 해결: 화면 깜빡임 100% 원천 박멸 (Zero-Flicker Architecture)] 🌟
-      // PDF 통모드(페이지 모드)일 때는 종이 바깥 영역을 책상 베젤 색상으로 구분하여 PDF 용지 경계를 선명하게 표시!
-      const isPdfPageDesk = Boolean(this.isGraphCovered && this.pdfPageBoardData && !this._isRenderingGraphSnapshot);
+      // 🌟 [Penchat: 이미지/PDF 주변 배경도 지저분한 회색 베젤 없이 깨끗한 캔버스 배경색(#ffffff)으로 통일]
+      const isPdfPageDesk = false;
       const bg = isPdfPageDesk
         ? ((curTheme.isLight || this.isMonochromeMode) ? '#e2e8f0' : '#0b0f19')
         : (this.isMonochromeMode ? '#ffffff' : curTheme.bg);
@@ -33219,9 +33240,7 @@ class GraphApp {
     // 🌟 [칠판 덮개(isGraphCovered) 활성 시 밑의 실시간 그래프 작업실을 100% 덮고 백지 칠판/PDF 페이지만 표출!] 🌟
     // PDF 통모드(this.pdfPageBoardData)에서는 필기와 카드가 반드시 PDF 용지 영역(_lastPdfPageScreenRect) 내부로 클리핑됩니다!
     if (this.isGraphCovered && !this._isRenderingGraphSnapshot) {
-      const pdfClipRect = (this.pdfPageBoardData && this._lastPdfPageScreenRect && this._lastPdfPageScreenRect.w > 2)
-        ? this._lastPdfPageScreenRect
-        : null;
+      const pdfClipRect = null;
       if (isExport && !this.useViewfinder) {
         if (pdfClipRect) {
           ctx.save();
@@ -38154,10 +38173,55 @@ class GraphApp {
       const cy = this.pdfPageBoardData.centerY || 0;
       const pTL = this.mathToScreen(cx - this.pdfPageBoardData.mathW / 2, cy + this.pdfPageBoardData.mathH / 2);
       const pBR = this.mathToScreen(cx + this.pdfPageBoardData.mathW / 2, cy - this.pdfPageBoardData.mathH / 2);
-      const pageX = Math.round(Math.min(pTL.x, pBR.x));
-      const pageY = Math.round(Math.min(pTL.y, pBR.y));
-      const pageW = Math.max(10, Math.round(Math.abs(pBR.x - pTL.x)));
-      const pageH = Math.max(10, Math.round(Math.abs(pBR.y - pTL.y)));
+      let bMinX = Math.min(pTL.x, pBR.x);
+      let bMinY = Math.min(pTL.y, pBR.y);
+      let bMaxX = Math.max(pTL.x, pBR.x);
+      let bMaxY = Math.max(pTL.y, pBR.y);
+      const effF = filterOpts || this._activeExportFilter || { includeProblem: true, includeGraph: true, includeInk: true };
+      if (effF.includeInk !== false && Array.isArray(this.inkStrokes)) {
+        const bz = this.boardZoom || 1.0;
+        this.inkStrokes.forEach(s => {
+          if (!s) return;
+          const isBoard = (s.target || 'board') === 'board';
+          const pad = Math.max(6, (s.size || 4) * (s.isHighlighter ? 2.2 : 1.4));
+          const expandPt = (sx, sy) => {
+            if (!Number.isFinite(sx) || !Number.isFinite(sy)) return;
+            if (sx - pad < bMinX) bMinX = sx - pad;
+            if (sy - pad < bMinY) bMinY = sy - pad;
+            if (sx + pad > bMaxX) bMaxX = sx + pad;
+            if (sy + pad > bMaxY) bMaxY = sy + pad;
+          };
+          if (s.points && s.points.length > 0) {
+            s.points.forEach(pt => {
+              const sp = isBoard ? this.boardToScreen(pt.x, pt.y) : this.mathToScreen(pt.x, pt.y);
+              expandPt(sp.x, sp.y);
+            });
+          }
+          if (s.shape) {
+            const sh = s.shape;
+            if (sh.type === 'line' && sh.start && sh.end) {
+              const s1 = isBoard ? this.boardToScreen(sh.start.x, sh.start.y) : this.mathToScreen(sh.start.x, sh.start.y);
+              const s2 = isBoard ? this.boardToScreen(sh.end.x, sh.end.y) : this.mathToScreen(sh.end.x, sh.end.y);
+              expandPt(s1.x, s1.y);
+              expandPt(s2.x, s2.y);
+            } else if (sh.type === 'rect' && sh.min && sh.max) {
+              const rs1 = isBoard ? this.boardToScreen(sh.min.x, sh.min.y) : this.mathToScreen(sh.min.x, sh.min.y);
+              const rs2 = isBoard ? this.boardToScreen(sh.max.x, sh.max.y) : this.mathToScreen(sh.max.x, sh.max.y);
+              expandPt(rs1.x, rs1.y);
+              expandPt(rs2.x, rs2.y);
+            } else if (sh.type === 'circle' && sh.center) {
+              const sc = isBoard ? this.boardToScreen(sh.center.x, sh.center.y) : this.mathToScreen(sh.center.x, sh.center.y);
+              const sr = isBoard ? (sh.radius * bz) : Math.abs(this.mathToScreen(sh.center.x + sh.radius, sh.center.y).x - sc.x);
+              expandPt(sc.x - sr, sc.y - sr);
+              expandPt(sc.x + sr, sc.y + sr);
+            }
+          }
+        });
+      }
+      const pageX = Math.round(bMinX);
+      const pageY = Math.round(bMinY);
+      const pageW = Math.max(10, Math.round(bMaxX - bMinX));
+      const pageH = Math.max(10, Math.round(bMaxY - bMinY));
       return { x: pageX, y: pageY, width: pageW, height: pageH, w: pageW, h: pageH };
     }
 
