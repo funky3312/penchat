@@ -19593,7 +19593,9 @@ class GraphApp {
       };
     }
 
-    // 🔗 Loom형 우상단 원클릭 [링크 복사] 버튼: 모달을 열지 않고 즉시 공유 링크 생성 & 클립보드 복사!
+    // 📤 우상단 원클릭 [공유] 버튼:
+    // - 모바일·태블릿: 사전 발급 ID로 0.0초 만에 OS 네이티브 공유 시트(카톡·문자·AirDrop·드라이브·복사)를 즉시 띄우면서 백그라운드에서 클라우드 업로드 동시 완료!
+    // - PC: 모달을 열지 않고 즉시 공유 링크 생성 & 클립보드 자동 복사!
     const btnQuickOneClickShare = document.getElementById('btnQuickOneClickShare');
     const lblQuickOneClickShare = document.getElementById('lblQuickOneClickShare');
     if (btnQuickOneClickShare) {
@@ -19602,10 +19604,6 @@ class GraphApp {
         if (btnQuickOneClickShare.dataset.busy === '1') return;
         btnQuickOneClickShare.dataset.busy = '1';
         try {
-          if (this.isAudioRecording) {
-            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '녹화 마무리 중...';
-            await this.stopAudioRecording();
-          }
           const allSlides = this._getActiveSlidesForExport('수업 노트');
           this.exportScope = (allSlides && allSlides.length > 1) ? 'all' : 'current';
           this.exportFilter = {
@@ -19615,15 +19613,49 @@ class GraphApp {
             includeAudio: true
           };
           syncFilterAndInvalidateCache();
-          if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '링크 생성 중...';
-          const finalUrl = await ensureCloudShareLinkOnDemand();
+
+          const preIssuedId = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          const baseUrl = window.location.href.split('#')[0];
+          const cloudUrl = `${baseUrl}#cloud=${preIssuedId}`;
+
+          const ua = navigator.userAgent || '';
+          const isMobileOrTablet = this.isIOSOrIPad() || /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(ua) || (navigator.maxTouchPoints > 1 && window.innerWidth <= 1366);
+          const canNativeShare = isMobileOrTablet && typeof navigator.share === 'function';
+
+          if (canNativeShare) {
+            // 🚀 1. 모바일·태블릿: 사용자 탭 제스처가 살아있는 0.00초 즉시 OS 공유 시트 호출 (카톡·AirDrop·메시지 등)
+            navigator.share({
+              title: 'Penchat',
+              url: cloudUrl
+            }).catch(() => { });
+            copyTextToClipboard(cloudUrl).catch(() => { });
+          }
+
+          // 🚀 2. 백그라운드(또는 PC)에서 녹화 종료 및 클라우드 패키지 업로드 완료
+          if (this.isAudioRecording) {
+            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '녹화 마무리 중...';
+            await this.stopAudioRecording();
+          }
+          if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = canNativeShare ? '업로드 중...' : '링크 생성 중...';
+
+          const uploadedId = await this.createCloudSharePackage(this.exportScope, this.exportFilter, preIssuedId);
+          const finalUrl = uploadedId ? `${baseUrl}#cloud=${uploadedId}` : cloudUrl;
+          cachedCloudShareUrl = finalUrl;
+          cachedCloudShareSig = getShareFilterSig();
+          if (inputShare) inputShare.value = finalUrl;
+          if (inputStudent) inputStudent.value = finalUrl;
+
           await copyTextToClipboard(finalUrl);
           btnQuickOneClickShare.classList.add('is-copied');
-          if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '✓ 링크 복사됨';
-          this.showToast('✅ 공유 링크가 복사되었습니다! 카톡·메신저에 바로 붙여넣기(Ctrl+V) 하세요.');
+          if (lblQuickOneClickShare) {
+            lblQuickOneClickShare.textContent = canNativeShare ? '✓ 공유 준비됨' : '✓ 링크 복사됨';
+          }
+          if (!canNativeShare) {
+            this.showToast('✅ 공유 링크가 복사되었습니다! 카톡·메신저에 바로 붙여넣기(Ctrl+V) 하세요.');
+          }
           setTimeout(() => {
             btnQuickOneClickShare.classList.remove('is-copied');
-            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '링크 복사';
+            if (lblQuickOneClickShare) lblQuickOneClickShare.textContent = '공유';
           }, 2200);
         } finally {
           btnQuickOneClickShare.dataset.busy = '0';
@@ -26783,7 +26815,7 @@ class GraphApp {
     };
   }
 
-  async buildExportSharePackageObject(scope = 'current', filterOpts = null) {
+  async buildExportSharePackageObject(scope = 'current', filterOpts = null, preIssuedShortId = null) {
     if (this.isAudioRecording) {
       await this.stopAudioRecording();
     } else if (this._pendingSlideAudioFinalizers && this._pendingSlideAudioFinalizers.length > 0) {
@@ -26833,7 +26865,7 @@ class GraphApp {
 
     const nowMs = Date.now();
     const TWO_WEEKS_MS = 7 * 24 * 60 * 60 * 1000; // 🌟 [대표님 정책]: 공유 링크 & QR 자동 소멸 기한 7일(7일간 유효)
-    const shortId = 's' + nowMs.toString(36) + Math.random().toString(36).slice(2, 6);
+    const shortId = preIssuedShortId || ('s' + nowMs.toString(36) + Math.random().toString(36).slice(2, 6));
     return {
       id: shortId,
       createdAt: nowMs,
@@ -26881,9 +26913,9 @@ class GraphApp {
     } catch (e) { }
   }
 
-  async createCloudSharePackage(scope = null, filterOpts = null) {
+  async createCloudSharePackage(scope = null, filterOpts = null, preIssuedShortId = null) {
     this._purgeExpiredSharedWorkspaces().catch(() => { });
-    const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter);
+    const pkg = await this.buildExportSharePackageObject(scope || this.exportScope || 'current', filterOpts || this.exportFilter, preIssuedShortId);
     const shortId = pkg.id;
 
     try {

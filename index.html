@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400..700;1,400..700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20261107_03">
+  <link rel="stylesheet" href="style.css?v=20261107_04">
 </head>
 
 <body class="theme-light">
@@ -1451,15 +1451,16 @@
           </button>
         </div>
 
-        <!-- 🔗 2. Loom형 원클릭 공유 링크 즉시 복사 버튼 (내보내기 모달 생략!) -->
+        <!-- 📤 2. 원클릭 통합 [공유] 버튼 (모바일·태블릿: 0초 OS 공유 시트 팝업 / PC: 즉시 링크 복사) -->
         <button type="button" id="btnQuickOneClickShare" class="quick-loom-share-btn"
-          title="클릭 한 번으로 공유 링크를 즉시 생성·복사합니다 (카톡·메신저에 바로 Ctrl+V)">
+          title="모바일·태블릿에서는 카톡·메시지·AirDrop 공유 창을 바로 열고, PC에서는 공유 링크를 즉시 복사합니다">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+            <polyline points="16 6 12 2 8 6" />
+            <line x1="12" y1="2" x2="12" y2="15" />
           </svg>
-          <span id="lblQuickOneClickShare">링크 복사</span>
+          <span id="lblQuickOneClickShare">공유</span>
         </button>
 
         <!-- ⋯ 3. 이미지 복사/저장 · QR · 파일 저장 더보기 -->
@@ -3110,7 +3111,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
   <script src="engine.js?v=20261105_20"></script>
-  <script src="app.js?v=20261107_03"></script>
+  <script src="app.js?v=20261107_04"></script>
   <!-- [🔀 세계 최초 N축 합성함수 4-분할 스튜디오 모달] -->
   <div id="modalNAxisStudio" class="n-axis-studio-backdrop" style="display: none;">
     <div class="n-axis-studio-card">
