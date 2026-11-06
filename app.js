@@ -19392,15 +19392,15 @@ class GraphApp {
   // ☁️ [클라우드 보관함 · 수업 슬라이드(PPT) · 기출 게시판 & 통합 공유 엔진]
   // ============================================================================
   initCloudHubAndPlaylist() {
-    this._firebaseProjectId = 'graphly-net';
+    this._firebaseProjectId = 'penchat-net';
     this._firebaseConfig = {
-      apiKey: "AIzaSyDW9F0xpg05IfG82L3H5nBMTXOs9XYtwpU",
-      authDomain: "graphly-net.firebaseapp.com",
-      projectId: "graphly-net",
-      storageBucket: "graphly-net.firebasestorage.app",
-      messagingSenderId: "934768067823",
-      appId: "1:934768067823:web:c7601110f7d4878680071a",
-      measurementId: "G-FRVVPNGN57"
+      apiKey: "AIzaSyAxg8-sNJZC_Kd5AXi3H1-4oOTNBrNJ7s4",
+      authDomain: "penchat-net.firebaseapp.com",
+      projectId: "penchat-net",
+      storageBucket: "penchat-net.firebasestorage.app",
+      messagingSenderId: "239681110675",
+      appId: "1:239681110675:web:75d13753cb7ed3d38c0366",
+      measurementId: "G-74ZXHDM5PC"
     };
 
     this._cloudIdAuthTab = 'login';
@@ -21333,9 +21333,9 @@ class GraphApp {
   _persistActiveCloudUserSession() {
     try {
       if (this.cloudUser && this.cloudUser.uid) {
-        localStorage.setItem('graphly_active_session_user_v2', JSON.stringify(this.cloudUser));
+        localStorage.setItem('penchat_active_session_user_v2', JSON.stringify(this.cloudUser));
       } else {
-        localStorage.removeItem('graphly_active_session_user_v2');
+        localStorage.removeItem('penchat_active_session_user_v2');
       }
     } catch (e) { }
   }
@@ -21345,9 +21345,10 @@ class GraphApp {
     const isIdAuth = (
       authProvider === 'email' ||
       authProvider === 'id' ||
-      String(fallbackRawUid || '').startsWith('id_')
+      String(fallbackRawUid || '').startsWith('id_') ||
+      String(fallbackRawUid || '').startsWith('pc_id_')
     );
-    const prefix = isIdAuth ? 'id_' : 'acct_';
+    const prefix = isIdAuth ? 'pc_id_' : 'pc_acct_';
     if (normEmail && normEmail.includes('@')) {
       return prefix + normEmail.replace(/[^a-z0-9@._-]/g, '_');
     }
@@ -21396,7 +21397,7 @@ class GraphApp {
 
   _restoreActiveCloudUserSession() {
     try {
-      const raw = localStorage.getItem('graphly_active_session_user_v2');
+      const raw = localStorage.getItem('penchat_active_session_user_v2');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed.uid && parsed.emailVerified !== false) {
@@ -24222,7 +24223,7 @@ class GraphApp {
   // 💾 [내 드라이브(구글 드라이브/PC/아이패드) .graphly 수업 세트 파일 저장 & 불러오기]
   // ============================================================================
   async _buildSelfLaunchingGraphlyHtml(packObj) {
-    const safeTitle = String((packObj && packObj.title) || 'Graphly 수업 노트')
+    const safeTitle = String((packObj && packObj.title) || 'Penchat 문서 노트')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -24231,12 +24232,12 @@ class GraphApp {
     const escapedPayload = compressedPayload.replace(/<\/script>/gi, '<\\/script>');
     const originUrl = (window.location && /^https?:/i.test(window.location.protocol))
       ? window.location.origin + window.location.pathname
-      : 'https://graphly.net/';
+      : 'https://penchat.net/';
     return [
       '<!DOCTYPE html>',
       '<html lang="ko"><head><meta charset="UTF-8">',
       '<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">',
-      `<title>${safeTitle} - Graphly</title>`,
+      `<title>${safeTitle} - Penchat</title>`,
       '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0f172a;}iframe{position:fixed;inset:0;width:100vw;height:100vh;border:0;display:block;}</style>',
       '</head><body>',
       `<script id="graphly-package-json" type="application/json">${escapedPayload}</script>`,
@@ -24326,7 +24327,7 @@ class GraphApp {
     return pack;
   }
 
-  async exportGraphlyDeckFile(title = 'Graphly_수업세트', tags = '#통째수업', slidesArray = null) {
+  async exportGraphlyDeckFile(title = 'Penchat_문서노트', tags = '#Penchat', slidesArray = null) {
     if (!slidesArray) {
       if (this.isAudioRecording) {
         await this.stopAudioRecording();
@@ -24379,10 +24380,10 @@ class GraphApp {
     const packObj = {
       format: 'GraphlyLessonPack',
       version: '2.0',
-      title: title || (isDeck ? `Graphly_${slides.length}문항_수업세트` : 'Graphly_수업노트'),
-      tags: tags || '#수학그래프',
+      title: title || (isDeck ? `Penchat_${slides.length}페이지_노트` : 'Penchat_문서노트'),
+      tags: tags || '#Penchat',
       summary: isDeck
-        ? `📚 ${slides.length}문항 통째 수업 · ${this._buildSlideSummaryBadge(slides[0])}`
+        ? `📚 ${slides.length}페이지 노트 · ${this._buildSlideSummaryBadge(slides[0])}`
         : this._buildSlideSummaryBadge(slides[0]),
       createdAt: Date.now(),
       isPlaylist: isDeck,
@@ -24394,10 +24395,10 @@ class GraphApp {
     const htmlStr = await this._buildSelfLaunchingGraphlyHtml(packObj);
     const blob = new Blob([htmlStr], { type: 'text/html;charset=utf-8' });
     const safeFileName = String(packObj.title)
-      .replace(/\.graphly(\.html)?$/i, '')
+      .replace(/\.(penchat|graphly)(\.html)?$/i, '')
       .replace(/[\/:*?"<>|]/g, '_')
-      .trim() || 'Graphly_Lesson';
-    const fileName = `${safeFileName}.graphly.html`;
+      .trim() || 'Penchat_Note';
+    const fileName = `${safeFileName}.penchat.html`;
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
